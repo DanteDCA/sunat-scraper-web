@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-import random # NUEVO: Importado para las pausas aleatorias
+import random 
 from io import BytesIO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -58,7 +58,7 @@ if archivo_subido:
         if st.button("🚀 Iniciar Procesamiento"):
             df['RUC'] = df['RUC'].astype(str).str.replace(r'[^\d]', '', regex=True).str.zfill(11)
             
-            # --- MODIFICADO: Inicializar TODAS tus columnas si no existen ---
+            # Inicializar TODAS las columnas
             columnas_extra = ['Razon Social', 'Tipo Contribuyente', 'Tipo de Documento', 'Nombre Comercial', 'Afecto RUS', 'Estado']
             for col in columnas_extra:
                 if col not in df.columns:
@@ -75,14 +75,12 @@ if archivo_subido:
             opciones.add_argument("--ignore-certificate-errors")
             opciones.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-            # NUEVO: Variables para el control de relevos de memoria y errores
+            # Variables de resistencia
             lote_maximo = 150
             filas_procesadas = 0
             hubo_error_fatal = False
 
-            # Usamos un bloque "with" o try/finally para asegurar que el driver se cierre
             try:
-                # MODIFICACIÓN PARA LA NUBE: Instalación automática del driver
                 servicios = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
                 driver = webdriver.Chrome(service=servicios, options=opciones)
                 
@@ -91,10 +89,9 @@ if archivo_subido:
                 for index, row in df.iterrows():
                     ruc_consulta = row['RUC'].strip()
 
-                    # NUEVO: SISTEMA DE RELEVOS (Libera memoria RAM cada 150 registros)
                     if filas_procesadas > 0 and filas_procesadas % lote_maximo == 0:
                         driver.quit()
-                        time.sleep(3) # Respiramos
+                        time.sleep(3) 
                         driver = webdriver.Chrome(service=servicios, options=opciones)
 
                     status_text.info(f"⏳ Procesando: {ruc_consulta} ({index+1}/{len(df)})")
@@ -105,13 +102,13 @@ if archivo_subido:
                     while reintentos > 0 and not exito:
                         try:
                             driver.get(url_sunat)
-                            driver.delete_all_cookies() # NUEVO: Limpia rastros por cada RUC
+                            driver.delete_all_cookies() 
 
                             caja_ruc = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "txtRuc")))
                             caja_ruc.clear()
                             caja_ruc.send_keys(ruc_consulta)
                             
-                            time.sleep(random.uniform(0.3, 0.8)) # NUEVO: Pausa aleatoria humana
+                            time.sleep(random.uniform(0.3, 0.8)) 
                             driver.find_element(By.ID, "btnAceptar").click()
 
                             try:
@@ -119,7 +116,7 @@ if archivo_subido:
                                 driver.switch_to.alert.accept()
                                 df.at[index, 'Razon Social'] = "RUC INVÁLIDO"
                                 exito = True
-                                filas_procesadas += 1 # NUEVO: Aumenta contador
+                                filas_procesadas += 1 
                                 continue
                             except: pass
 
@@ -128,17 +125,43 @@ if archivo_subido:
 
                             WebDriverWait(driver, 15).until(EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'Número de RUC')]")))
                             
-                            # --- MODIFICADO: Extracción completa de todas tus variables ---
+                            # =========================================================
+                            # --- EXTRACCIÓN BLINDADA (Red de Seguridad Agresiva) ---
+                            # =========================================================
                             ruc_y_razon = extraer_dato_sunat(driver, "Número de RUC")
                             df.at[index, 'Razon Social'] = ruc_y_razon.split(" - ", 1)[1] if " - " in ruc_y_razon else ruc_y_razon
                             df.at[index, 'Tipo Contribuyente'] = extraer_dato_sunat(driver, "Tipo Contribuyente")
                             df.at[index, 'Tipo de Documento'] = extraer_dato_sunat(driver, "Tipo de Documento")
-                            df.at[index, 'Nombre Comercial'] = extraer_dato_sunat(driver, "Nombre Comercial")
-                            df.at[index, 'Afecto RUS'] = extraer_dato_sunat(driver, "Afecto al Nuevo RUS")
-                            df.at[index, 'Estado'] = extraer_dato_sunat(driver, "Estado")
+                            
+                            # 1. Rescate de Nombre Comercial
+                            nom_comercial = extraer_dato_sunat(driver, "Nombre Comercial")
+                            if nom_comercial == "-":
+                                try:
+                                    # Si falla, usamos XPath absoluto a la tabla de SUNAT
+                                    nom_comercial = driver.find_element(By.XPATH, "//td[contains(text(), 'Nombre Comercial')]/following-sibling::td").text.strip()
+                                except: pass
+                            df.at[index, 'Nombre Comercial'] = nom_comercial
+
+                            # 2. Rescate del Afecto al Nuevo RUS (EL DATO VITAL)
+                            rus = extraer_dato_sunat(driver, "Afecto al Nuevo RUS")
+                            if rus == "-":
+                                try:
+                                    # La SUNAT a veces usa "Nuevo RUS" sin el "Afecto al"
+                                    rus = driver.find_element(By.XPATH, "//*[contains(text(), 'Nuevo RUS')]/following-sibling::td").text.strip()
+                                except: pass
+                            df.at[index, 'Afecto RUS'] = rus
+                            
+                            # 3. Rescate del Estado
+                            estado = extraer_dato_sunat(driver, "Estado")
+                            if estado == "-":
+                                try:
+                                    estado = driver.find_element(By.XPATH, "//*[contains(text(), 'Estado del Contribuyente')]/following-sibling::td").text.strip()
+                                except: pass
+                            df.at[index, 'Estado'] = estado
+                            # =========================================================
                             
                             exito = True
-                            filas_procesadas += 1 # NUEVO: Aumenta contador
+                            filas_procesadas += 1 
                             
                             if len(driver.window_handles) > 1:
                                 driver.close()
@@ -150,7 +173,7 @@ if archivo_subido:
                             time.sleep(2)
                             if reintentos == 0:
                                 df.at[index, 'Razon Social'] = "ERROR DE CONEXIÓN"
-                                filas_procesadas += 1 # NUEVO: Aumenta contador para no trabar el ciclo
+                                filas_procesadas += 1 
 
                     progreso.progress((index + 1) / len(df))
                 
@@ -158,22 +181,19 @@ if archivo_subido:
                 st.success("✅ ¡Procesamiento terminado!")
 
             except Exception as e:
-                # NUEVO: Captura el error sin destruir los datos avanzados
                 st.error(f"❌ Error fatal en el registro {index+1}: {e}")
                 st.warning("⚠️ Se interrumpió la consulta, pero puedes descargar los registros que sí se procesaron.")
                 hubo_error_fatal = True
                 if 'driver' in locals():
                     driver.quit()
 
-            # --- BOTÓN DE DESCARGA CON SPINNER (Movido fuera del try para asegurar descarga parcial) ---
+            # --- BOTÓN DE DESCARGA ---
             with st.spinner('📦 Preparando archivo para descarga...'):
                 output = BytesIO()
-                # Especificamos el motor 'xlsxwriter'
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=False)
                 data_excel = output.getvalue()
 
-            # Cambia el texto del botón si hubo un corte
             label_boton = "📥 Descargar Resultados Parciales" if hubo_error_fatal else "📥 Descargar Resultados Finales"
 
             st.download_button(
