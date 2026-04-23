@@ -110,7 +110,7 @@ if archivo_subido:
                             caja_ruc.clear()
                             caja_ruc.send_keys(ruc_consulta)
                             
-                            time.sleep(random.uniform(1.0, 2.5)) # NUEVO: Pausa aleatoria humana
+                            time.sleep(random.uniform(0.3, 0.8)) # NUEVO: Pausa aleatoria humana
                             driver.find_element(By.ID, "btnAceptar").click()
 
                             try:
