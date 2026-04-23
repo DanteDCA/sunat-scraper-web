@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+import random # NUEVO: Importado para las pausas aleatorias
 from io import BytesIO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -73,6 +74,11 @@ if archivo_subido:
             opciones.add_argument("--ignore-certificate-errors")
             opciones.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
+            # NUEVO: Variables para el control de relevos de memoria y errores
+            lote_maximo = 150
+            filas_procesadas = 0
+            hubo_error_fatal = False
+
             # Usamos un bloque "with" o try/finally para asegurar que el driver se cierre
             try:
                 # MODIFICACIÓN PARA LA NUBE: Instalación automática del driver
@@ -83,6 +89,13 @@ if archivo_subido:
 
                 for index, row in df.iterrows():
                     ruc_consulta = row['RUC'].strip()
+
+                    # NUEVO: SISTEMA DE RELEVOS (Libera memoria RAM cada 50 registros)
+                    if filas_procesadas > 0 and filas_procesadas % lote_maximo == 0:
+                        driver.quit()
+                        time.sleep(3) # Respiramos
+                        driver = webdriver.Chrome(service=servicios, options=opciones)
+
                     status_text.info(f"⏳ Procesando: {ruc_consulta} ({index+1}/{len(df)})")
                     
                     reintentos = 3
@@ -91,9 +104,13 @@ if archivo_subido:
                     while reintentos > 0 and not exito:
                         try:
                             driver.get(url_sunat)
+                            driver.delete_all_cookies() # NUEVO: Limpia rastros por cada RUC
+
                             caja_ruc = WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "txtRuc")))
                             caja_ruc.clear()
                             caja_ruc.send_keys(ruc_consulta)
+                            
+                            time.sleep(random.uniform(1.0, 2.5)) # NUEVO: Pausa aleatoria humana
                             driver.find_element(By.ID, "btnAceptar").click()
 
                             try:
@@ -101,6 +118,7 @@ if archivo_subido:
                                 driver.switch_to.alert.accept()
                                 df.at[index, 'Razon Social'] = "RUC INVÁLIDO"
                                 exito = True
+                                filas_procesadas += 1 # NUEVO: Aumenta contador
                                 continue
                             except: pass
 
@@ -114,6 +132,7 @@ if archivo_subido:
                             df.at[index, 'Estado'] = extraer_dato_sunat(driver, "Estado")
                             
                             exito = True
+                            filas_procesadas += 1 # NUEVO: Aumenta contador
                             
                             if len(driver.window_handles) > 1:
                                 driver.close()
@@ -125,28 +144,35 @@ if archivo_subido:
                             time.sleep(2)
                             if reintentos == 0:
                                 df.at[index, 'Razon Social'] = "ERROR DE CONEXIÓN"
+                                filas_procesadas += 1 # NUEVO: Aumenta contador para no trabar el ciclo
 
                     progreso.progress((index + 1) / len(df))
                 
                 driver.quit()
                 st.success("✅ ¡Procesamiento terminado!")
 
-                # --- BOTÓN DE DESCARGA CON SPINNER ---
-                with st.spinner('📦 Preparando archivo para descarga...'):
-                    output = BytesIO()
-                    # Especificamos el motor 'xlsxwriter'
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df.to_excel(writer, index=False)
-                    data_excel = output.getvalue()
-
-                st.download_button(
-                    label="📥 Descargar Resultados Finales", 
-                    data=data_excel, 
-                    file_name="sunat_final.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
             except Exception as e:
-                st.error(f"❌ Error fatal: {e}")
+                # NUEVO: Captura el error sin destruir los datos avanzados
+                st.error(f"❌ Error fatal en el registro {index+1}: {e}")
+                st.warning("⚠️ Se interrumpió la consulta, pero puedes descargar los registros que sí se procesaron.")
+                hubo_error_fatal = True
                 if 'driver' in locals():
                     driver.quit()
+
+            # --- BOTÓN DE DESCARGA CON SPINNER (Movido fuera del try para asegurar descarga parcial) ---
+            with st.spinner('📦 Preparando archivo para descarga...'):
+                output = BytesIO()
+                # Especificamos el motor 'xlsxwriter'
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False)
+                data_excel = output.getvalue()
+
+            # Cambia el texto del botón si hubo un corte
+            label_boton = "📥 Descargar Resultados Parciales" if hubo_error_fatal else "📥 Descargar Resultados Finales"
+
+            st.download_button(
+                label=label_boton, 
+                data=data_excel, 
+                file_name="sunat_final.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
