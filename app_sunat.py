@@ -45,7 +45,7 @@ def extraer_dato_sunat(driver, label, mantener_saltos=False):
 
 # --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="Consultor RUC SUNAT", page_icon="🚀")
-st.title("🔍 Extractor Masivo SUNAT (Modo Corp)")
+st.title("🔍 Extractor Masivo SUNAT")
 
 archivo_subido = st.file_uploader("Sube tu Excel con columna 'RUC'", type=["xlsx"])
 
