@@ -58,8 +58,9 @@ if archivo_subido:
         if st.button("🚀 Iniciar Procesamiento"):
             df['RUC'] = df['RUC'].astype(str).str.replace(r'[^\d]', '', regex=True).str.zfill(11)
             
-            # Inicializar columnas si no existen
-            for col in ['Razon Social', 'Estado']:
+            # --- MODIFICADO: Inicializar TODAS tus columnas si no existen ---
+            columnas_extra = ['Razon Social', 'Tipo Contribuyente', 'Tipo de Documento', 'Nombre Comercial', 'Afecto RUS', 'Estado']
+            for col in columnas_extra:
                 if col not in df.columns:
                     df[col] = '-'
 
@@ -90,7 +91,7 @@ if archivo_subido:
                 for index, row in df.iterrows():
                     ruc_consulta = row['RUC'].strip()
 
-                    # NUEVO: SISTEMA DE RELEVOS (Libera memoria RAM cada 50 registros)
+                    # NUEVO: SISTEMA DE RELEVOS (Libera memoria RAM cada 150 registros)
                     if filas_procesadas > 0 and filas_procesadas % lote_maximo == 0:
                         driver.quit()
                         time.sleep(3) # Respiramos
@@ -127,8 +128,13 @@ if archivo_subido:
 
                             WebDriverWait(driver, 15).until(EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'Número de RUC')]")))
                             
+                            # --- MODIFICADO: Extracción completa de todas tus variables ---
                             ruc_y_razon = extraer_dato_sunat(driver, "Número de RUC")
                             df.at[index, 'Razon Social'] = ruc_y_razon.split(" - ", 1)[1] if " - " in ruc_y_razon else ruc_y_razon
+                            df.at[index, 'Tipo Contribuyente'] = extraer_dato_sunat(driver, "Tipo Contribuyente")
+                            df.at[index, 'Tipo de Documento'] = extraer_dato_sunat(driver, "Tipo de Documento")
+                            df.at[index, 'Nombre Comercial'] = extraer_dato_sunat(driver, "Nombre Comercial")
+                            df.at[index, 'Afecto RUS'] = extraer_dato_sunat(driver, "Afecto al Nuevo RUS")
                             df.at[index, 'Estado'] = extraer_dato_sunat(driver, "Estado")
                             
                             exito = True
