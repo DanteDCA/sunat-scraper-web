@@ -133,30 +133,60 @@ if archivo_subido:
                             df.at[index, 'Tipo Contribuyente'] = extraer_dato_sunat(driver, "Tipo Contribuyente")
                             df.at[index, 'Tipo de Documento'] = extraer_dato_sunat(driver, "Tipo de Documento")
                             
-                            # 1. Rescate de Nombre Comercial
-                            nom_comercial = extraer_dato_sunat(driver, "Nombre Comercial")
-                            if nom_comercial == "-":
-                                try:
-                                    # Si falla, usamos XPath absoluto a la tabla de SUNAT
-                                    nom_comercial = driver.find_element(By.XPATH, "//td[contains(text(), 'Nombre Comercial')]/following-sibling::td").text.strip()
-                                except: pass
-                            df.at[index, 'Nombre Comercial'] = nom_comercial
+                            # 1 y 2. Rescate conjunto de Nombre Comercial + Afecto al Nuevo RUS
+                            raw_nombre = extraer_dato_sunat(driver, "Nombre Comercial", mantener_saltos=True)
 
-                            # 2. Rescate del Afecto al Nuevo RUS (EL DATO VITAL)
-                            rus = extraer_dato_sunat(driver, "Afecto al Nuevo RUS")
-                            if rus == "-":
+                            if raw_nombre == "-":
                                 try:
-                                    # La SUNAT a veces usa "Nuevo RUS" sin el "Afecto al"
-                                    rus = driver.find_element(By.XPATH, "//*[contains(text(), 'Nuevo RUS')]/following-sibling::td").text.strip()
-                                except: pass
-                            df.at[index, 'Afecto RUS'] = rus
+                                    raw_nombre = driver.find_element(
+                                        By.XPATH,
+                                        "//td[contains(., 'Nombre Comercial')]/following-sibling::td"
+                                    ).text.strip()
+                                except:
+                                    pass
+
+                            nom_comercial = raw_nombre
+                            rus = "-"
+
+                            if raw_nombre and raw_nombre != "-":
+                                if "Afecto al Nuevo RUS:" in raw_nombre:
+                                    partes = raw_nombre.split("Afecto al Nuevo RUS:", 1)
+                                    nom_comercial = partes[0].strip() if partes[0].strip() else "-"
+                                    rus = partes[1].strip() if partes[1].strip() else "-"
+                                elif "Afecto al Nuevo RUS" in raw_nombre:
+                                    partes = raw_nombre.split("Afecto al Nuevo RUS", 1)
+                                    nom_comercial = partes[0].strip() if partes[0].strip() else "-"
+                                    rus = partes[1].replace(":", "").strip() if partes[1].strip() else "-"
+
+                            if rus == "-":
+                                rus = extraer_dato_sunat(driver, "Afecto al Nuevo RUS")
+                                if rus == "-":
+                                    try:
+                                        rus = driver.find_element(
+                                            By.XPATH,
+                                            "//*[contains(text(), 'Afecto al Nuevo RUS')]/following-sibling::*[1]"
+                                        ).text.strip()
+                                    except:
+                                        try:
+                                            rus = driver.find_element(
+                                                By.XPATH,
+                                                "//*[contains(text(), 'Nuevo RUS')]/following-sibling::*[1]"
+                                            ).text.strip()
+                                        except:
+                                            pass
+
+                            df.at[index, 'Nombre Comercial'] = nom_comercial if nom_comercial else "-"
+                            df.at[index, 'Afecto RUS'] = rus if rus else "-"
                             
                             # 3. Rescate del Estado
-                            estado = extraer_dato_sunat(driver, "Estado")
+                            estado = extraer_dato_sunat(driver, "Estado del Contribuyente")
+                            if estado == "-":
+                                estado = extraer_dato_sunat(driver, "Estado")
                             if estado == "-":
                                 try:
-                                    estado = driver.find_element(By.XPATH, "//*[contains(text(), 'Estado del Contribuyente')]/following-sibling::td").text.strip()
-                                except: pass
+                                    estado = driver.find_element(By.XPATH, "//*[contains(text(), 'Estado del Contribuyente')]/following-sibling::*[1]").text.strip()
+                                except:
+                                    pass
                             df.at[index, 'Estado'] = estado
                             # =========================================================
                             
